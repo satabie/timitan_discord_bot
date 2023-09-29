@@ -9,25 +9,33 @@ load_dotenv()
 TOKEN = os.getenv('DISCORD_BOT_TOKEN')
 
 intents = discord.Intents.default()
-bot = commands.Bot(command_prefix='!', intents=intents)
+intents.message_content = True
+bot = commands.Bot(command_prefix='/', case_insensitive=True, intents=intents)
 
-# 画像フォルダから画像ファイルを読み込む
-image_folder = 'images'
-image_files = [f for f in os.listdir(image_folder) if os.path.isfile(os.path.join(image_folder, f))]
-
+# 起動時に動作する処理
 @bot.event
 async def on_ready():
-    print(f'Logged in as {bot.user}')
+    print('ログインしました')
 
-@bot.command(name='ちみ')
-async def send_random_stamp(ctx):
-    # ランダムに画像を選択
-    selected_stamp = random.choice(image_files)
+# メッセージ受信時に動作する処理
+@bot.event
+async def on_message(message: discord.Message):
+    if message.author.bot:
+        return
 
-    # 画像を送信
-    with open(os.path.join(image_folder, selected_stamp), 'rb') as file:
-        picture = discord.File(file)
-        await ctx.send(file=picture)
+    print(message.content)
+    if 'ちみ' in message.content:
+        image_folder = 'images'
+        # image_folder内のファイル名をリストで取得
+        image_files = [f for f in os.listdir(image_folder) if os.path.isfile(os.path.join(image_folder, f))]
+        if image_files:
+            image_file = random.choice(image_files)
+            image_path = os.path.join(image_folder, image_file)
+            await message.channel.send(file=discord.File(image_path))
+    elif 'shosei' or "Shosei" or "書生" in message.content:
+        await message.channel.send("shoseiは寝ています")
+
+
 
 # ボットを実行
 bot.run(TOKEN)
