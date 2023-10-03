@@ -3,6 +3,7 @@ from discord.ext import commands
 import os
 import random
 from dotenv import load_dotenv
+from keep_alive import keep_alive
 
 # .envファイルから環境変数を読み込み
 load_dotenv()
@@ -32,10 +33,11 @@ async def on_message(message: discord.Message):
             image_file = random.choice(image_files)
             image_path = os.path.join(image_folder, image_file)
             await message.channel.send(file=discord.File(image_path))
-    elif 'shosei' or "Shosei" or "書生" in message.content:
-        await message.channel.send("shoseiは寝ています")
+    elif any(keyword in message.content for keyword in ['shosei', 'Shosei', 'しょせい', '書生']):
+            await message.channel.send("書生は寝ています")
 
 
 
 # ボットを実行
+keep_alive()
 bot.run(TOKEN)
