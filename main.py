@@ -49,10 +49,11 @@ async def on_message(message: discord.Message):
 
 
 # 機能を説明するヘルプコマンド
-@bot.command(name='bot_help')
+@bot.command(name='timi_help')
 async def help(ctx):
-    embed = discord.Embed(title='ヘルプ', description='このボットのコマンド一覧です', color=0x00bfff)
-    embed.add_field(name='/help', value='このメッセージを表示します', inline=False)
+    embed = discord.Embed(title='ヘルプ', description='ちみたんのコマンド一覧だよ', color=0x00bfff)
+    embed.add_field(name='/timi_help', value='このメッセージを表示します', inline=False)
+    embed.add_field(name='/del_msg N', value='直近N件のメッセージを削除します(例：/del_msg 5)', inline=False)
     embed.add_field(name='/alarm HH:MM', value='指定した時刻にメンションを送信します(例：/alarm 17:00)', inline=False)
     embed.add_field(name='/ping', value='pingを送信します', inline=False)
     await ctx.send(embed=embed)
@@ -88,6 +89,12 @@ async def set_alarm(ctx, time: str):
 async def set_alarm_error(ctx, error):
     if isinstance(error, commands.MissingRequiredArgument):
         await ctx.send("正しい時刻の形式で指定してください(例：/alarm 17:00) ")
+
+
+@bot.command(name='del_msg')
+async def del_msg(ctx, num: int):
+    await ctx.channel.purge(limit=num + 1)
+    await ctx.send(f'{num}件のメッセージを削除しました', delete_after=10)
 
 
 @bot.command(name='ping')
