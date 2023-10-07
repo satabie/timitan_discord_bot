@@ -13,7 +13,8 @@ TOKEN = os.getenv('DISCORD_BOT_TOKEN')
 
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix='/', case_insensitive=True, intents=intents)
+command_prefix = '/'
+bot = commands.Bot(command_prefix=command_prefix, case_insensitive=True, intents=intents)
 
 # 起動時に動作する処理
 
@@ -30,7 +31,7 @@ async def on_message(message: discord.Message):
         return
 
     # 受け取ったメッセージがコマンドである場合の処理
-    if message.content.startswith('/'):
+    if message.content.startswith(command_prefix):
         command_text = message.content[1:]
         await bot.process_commands(message)
 
@@ -47,7 +48,14 @@ async def on_message(message: discord.Message):
         await message.channel.send("書生は寝ています")
 
 
-# new command
+# 機能を説明するヘルプコマンド
+@bot.command(name='bot_help')
+async def help(ctx):
+    embed = discord.Embed(title='ヘルプ', description='このボットのコマンド一覧です', color=0x00bfff)
+    embed.add_field(name='/help', value='このメッセージを表示します', inline=False)
+    embed.add_field(name='/alarm HH:MM', value='指定した時刻にメンションを送信します(例：/alarm 17:00)', inline=False)
+    embed.add_field(name='/ping', value='pingを送信します', inline=False)
+    await ctx.send(embed=embed)
 
 
 @bot.command(name='alarm')
@@ -58,23 +66,18 @@ async def set_alarm(ctx, time: str):
         now = datetime.datetime.now()
         today = datetime.date.today()
         alarm_time = alarm_time.replace(year=today.year, month=today.month, day=today.day)
-        print("time: " + str(time))
-        print("alarm_time: " + str(alarm_time))
-        print("now: " + str(now))
 
         # 指定した時刻までの時間差を計算
         time_delta = alarm_time - now
-        print("time_delta: " + str(time_delta))
 
-        # タイマーが負の場合、翌日の同じ時刻に設定
+        # 翌日を指定した場合の処理
         if time_delta.total_seconds() < 0:
-            print("負")
             tomorrow = today + datetime.timedelta(days=1)
             alarm_time = alarm_time.replace(year=tomorrow.year, month=tomorrow.month, day=tomorrow.day)
             time_delta = alarm_time - now
 
         # タイマーをセットした時刻にメッセージを送信
-        print("time_delta: " + str(time_delta.total_seconds()))
+        await ctx.send(f"アラームを{time}にセットしました")
         await asyncio.sleep(time_delta.total_seconds())
         await ctx.send(f'{ctx.author.mention} {time}になりました')
     except ValueError:
@@ -86,6 +89,10 @@ async def set_alarm_error(ctx, error):
     if isinstance(error, commands.MissingRequiredArgument):
         await ctx.send("正しい時刻の形式で指定してください(例：/alarm 17:00) ")
 
+
+@bot.command(name='ping')
+async def ping(ctx):
+    await ctx.send('pong')
 
 # ボットを実行
 keep_alive()
