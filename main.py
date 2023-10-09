@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from keep_alive import keep_alive
 import asyncio
 import datetime
+import pytz
 
 # .envファイルから環境変数を読み込み
 load_dotenv()
@@ -14,6 +15,7 @@ TOKEN = os.getenv('DISCORD_BOT_TOKEN')
 intents = discord.Intents.default()
 intents.message_content = True
 command_prefix = '/'
+TIMEZONE = 'Asia/Tokyo'
 bot = commands.Bot(command_prefix=command_prefix, case_insensitive=True, intents=intents)
 
 # 起動時に動作する処理
@@ -54,7 +56,7 @@ async def help(ctx):
     embed = discord.Embed(title='ヘルプ', description='ちみたんのコマンド一覧だよ', color=0x00bfff)
     embed.add_field(name='/timi_help', value='このメッセージを表示します', inline=False)
     embed.add_field(name='/del_msg N', value='直近N件のメッセージを削除します(例：/del_msg 5)', inline=False)
-    embed.add_field(name='/alarm HH:MM', value='指定した時刻にメンションを送信します(例：/alarm 17:00)', inline=False)
+    embed.add_field(name='/alarm HH:MM', value='指定した時刻(JST)にメンションを送信します(例：/alarm 17:00)', inline=False)
     embed.add_field(name='/ping', value='pingを送信します', inline=False)
     await ctx.send(embed=embed)
 
@@ -62,11 +64,16 @@ async def help(ctx):
 @bot.command(name='alarm')
 async def set_alarm(ctx, time: str):
     try:
+        # タイムゾーンの設定
+        server_timezone = pytz.timezone(TIMEZONE)
+        now = datetime.datetime.now(server_timezone)
+        today = datetime.date.today()
+
         # 時刻をバース
         alarm_time = datetime.datetime.strptime(time, '%H:%M')
-        now = datetime.datetime.now()
-        today = datetime.date.today()
-        alarm_time = alarm_time.replace(year=today.year, month=today.month, day=today.day)
+
+        # タイムゾーンを設定
+        alarm_time = server_timezone.localize(alarm_time.replace(year=today.year, month=today.month, day=today.day))
 
         # 指定した時刻までの時間差を計算
         time_delta = alarm_time - now
@@ -78,9 +85,9 @@ async def set_alarm(ctx, time: str):
             time_delta = alarm_time - now
 
         # タイマーをセットした時刻にメッセージを送信
-        await ctx.send(f"アラームを{time}にセットしました")
+        await ctx.send(f"アラームを{time}(JST)にセットしました")
         await asyncio.sleep(time_delta.total_seconds())
-        await ctx.send(f'{ctx.author.mention} {time}になりました')
+        await ctx.send(f'{ctx.author.mention} {time}(JST)になりました')
     except ValueError:
         await ctx.send("正しい時刻の形式で指定してください(例：/alarm 17:00) ")
 
