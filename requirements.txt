@@ -16,3 +16,4 @@ multidict==6.0.4
 python-dotenv==1.0.0
 Werkzeug==3.0.0
 yarl==1.9.2
+pytz==2023.3.post1
