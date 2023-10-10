@@ -84,9 +84,14 @@ async def set_alarm(ctx, time: str):
             alarm_time = alarm_time.replace(year=tomorrow.year, month=tomorrow.month, day=tomorrow.day)
             time_delta = alarm_time - now
 
-        # タイマーをセットした時刻にメッセージを送信
         await ctx.send(f"アラームを{time}(JST)にセットしました")
-        await asyncio.sleep(time_delta.total_seconds())
+        
+        # 指定した時刻まで待機
+        while now < alarm_time:
+            await asyncio.sleep(60) # 　1分ごとに確認
+            now = datetime.datetime.now(server_timezone)
+
+        # タイマーをセットした時刻にメッセージを送信
         await ctx.send(f'{ctx.author.mention} {time}(JST)になりました')
     except ValueError:
         await ctx.send("正しい時刻の形式で指定してください(例：/alarm 17:00) ")
