@@ -46,8 +46,11 @@ async def on_message(message: discord.Message):
             image_file = random.choice(image_files)
             image_path = os.path.join(image_folder, image_file)
             await message.channel.send(file=discord.File(image_path))
-    elif any(keyword in message.content for keyword in ['shosei', 'Shosei', 'しょせい', '書生','坂田','さかた']):
-        await message.channel.send(f"{keyword}は寝ています")
+        else:
+            for keyword in ['shosei', 'Shosei', 'しょせい', '書生','坂田','さかた']:
+                if keyword in message.content:
+                    await message.channel.send(f"{keyword}は寝ています")
+                    break
 
 
 # 機能を説明するヘルプコマンド
