@@ -49,7 +49,7 @@ async def on_message(message: discord.Message):
             await message.channel.send(file=discord.File(image_path))
     else:
         for keyword in REPLY_KEYWORDS:
-            if keyword and keyword in message.content:
+            if keyword in message.content:
                 await message.channel.send(f'{keyword}は寝ています')
                 break
 
