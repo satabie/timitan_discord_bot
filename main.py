@@ -4,117 +4,204 @@ from discord import app_commands
 import os
 import random
 from dotenv import load_dotenv
-
 from keep_alive import keep_alive
 import asyncio
 import datetime
 import pytz
+import logging
+from typing import Optional, List
+from pathlib import Path
 
-# .envファイルから環境変数を読み込み
-load_dotenv()
-TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-REPLY_KEYWORDS = os.getenv("REPLY_KEYWORDS", "").split(",")
+# ロギングの設定
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
+
+# 設定クラス
+class Config:
+    """ボットの設定を管理するクラス"""
+
+    load_dotenv()
+
+    TOKEN: str = os.getenv("DISCORD_BOT_TOKEN", "")
+    REPLY_KEYWORDS: List[str] = [k.strip() for k in os.getenv("REPLY_KEYWORDS", "").split(",") if k.strip()]
+    COMMAND_PREFIX: str = "/"
+    TIMEZONE: str = "Asia/Tokyo"
+    GIF_FOLDER: str = "gif"
+    ALARM_CHECK_INTERVAL: int = 60  # 秒
+
+    @classmethod
+    def validate(cls) -> None:
+        """設定の検証"""
+        if not cls.TOKEN:
+            raise ValueError("DISCORD_BOT_TOKEN が設定されていません")
+        if not Path(cls.GIF_FOLDER).exists():
+            logger.warning(f"GIFフォルダ {cls.GIF_FOLDER} が見つかりません")
+
+
+Config.validate()
+
+# Botのセットアップ
 intents = discord.Intents.default()
 intents.message_content = True
-command_prefix = "/"
-TIMEZONE = "Asia/Tokyo"
-bot = commands.Bot(command_prefix=command_prefix, case_insensitive=True, intents=intents)
+bot = commands.Bot(command_prefix=Config.COMMAND_PREFIX, case_insensitive=True, intents=intents)
+
+# ヘルパー関数
+
+
+def get_random_gif() -> Optional[Path]:
+    """GIFフォルダからランダムにGIFを選択する"""
+    gif_folder = Path(Config.GIF_FOLDER)
+    if not gif_folder.exists():
+        logger.error(f"GIFフォルダ {Config.GIF_FOLDER} が存在しません")
+        return None
+
+    gif_files = [f for f in gif_folder.iterdir() if f.is_file()]
+    if not gif_files:
+        logger.warning(f"GIFフォルダ {Config.GIF_FOLDER} にファイルがありません")
+        return None
+
+    return random.choice(gif_files)
+
+
+async def send_random_gif(channel: discord.TextChannel) -> None:
+    """指定されたチャンネルにランダムなGIFを送信する"""
+    try:
+        gif_path = get_random_gif()
+        if gif_path:
+            await channel.send(file=discord.File(gif_path))
+            logger.info(f"GIFを送信しました: {gif_path.name}")
+    except Exception as e:
+        logger.error(f"GIFの送信に失敗しました: {e}")
+
+
+def check_keyword_in_message(message_content: str, keywords: List[str]) -> Optional[str]:
+    """メッセージ内にキーワードが含まれているかチェックする"""
+    for keyword in keywords:
+        if keyword and keyword in message_content:
+            return keyword
+    return None
+
+
+def calculate_alarm_time(time_str: str, timezone_str: str) -> datetime.datetime:
+    """指定された時刻文字列からアラーム時刻を計算する"""
+    server_timezone = pytz.timezone(timezone_str)
+    now = datetime.datetime.now(server_timezone)
+    today = datetime.date.today()
+
+    # 時刻をパース
+    alarm_time = datetime.datetime.strptime(time_str, "%H:%M")
+
+    # タイムゾーンを設定
+    alarm_time = server_timezone.localize(alarm_time.replace(year=today.year, month=today.month, day=today.day))
+
+    # 指定した時刻が過去の場合は翌日に設定
+    if alarm_time <= now:
+        tomorrow = today + datetime.timedelta(days=1)
+        alarm_time = alarm_time.replace(year=tomorrow.year, month=tomorrow.month, day=tomorrow.day)
+
+    return alarm_time
+
 
 # 起動時に動作する処理
 
 
 @bot.event
-async def on_ready():
+async def on_ready() -> None:
+    """ボット起動時の処理"""
     try:
         synced = await bot.tree.sync()
-        print(f"ログインしました - {len(synced)}個のスラッシュコマンドを同期しました")
+        logger.info(f"ログインしました - {len(synced)}個のスラッシュコマンドを同期しました")
     except Exception as e:
-        print(f"コマンドの同期に失敗しました: {e}")
+        logger.error(f"コマンドの同期に失敗しました: {e}")
 
 
 # メッセージ受信時に動作する処理
+
+
 @bot.event
-async def on_message(message: discord.Message):
+async def on_message(message: discord.Message) -> None:
+    """メッセージ受信時の処理"""
     if message.author.bot:
         return
 
-    print(message.content)
-    for keyword in REPLY_KEYWORDS:
-        if keyword in message.content:
-            gif_folder = "gif"
-            # gif_folder内のファイル名をリストで取得
-            gif_files = [f for f in os.listdir(gif_folder) if os.path.isfile(os.path.join(gif_folder, f))]
-            if gif_files:
-                gif_file = random.choice(gif_files)
-                gif_path = os.path.join(gif_folder, gif_file)
-                await message.channel.send(file=discord.File(gif_path))
-            break
+    logger.info(f"メッセージ受信: {message.content}")
+
+    # キーワードに対する返信（GIF送信）
+    keyword = check_keyword_in_message(message.content, Config.REPLY_KEYWORDS)
+    if keyword:
+        await send_random_gif(message.channel)
+        logger.info(f"キーワード '{keyword}' に反応しました")
 
 
-# 機能を説明するヘルプコマンド
+# コマンド定義
+
+
 @bot.tree.command(name="timi_help", description="ちみたんのコマンド一覧を表示します")
-async def help(interaction: discord.Interaction):
+async def help(interaction: discord.Interaction) -> None:
+    """ヘルプコマンド"""
     embed = discord.Embed(title="ヘルプ", description="ちみたんのコマンド一覧だよ", color=0x00BFFF)
     embed.add_field(name="/timi_help", value="このメッセージを表示します", inline=False)
     embed.add_field(name="/del_msg N", value="直近N件のメッセージを削除します(例：/del_msg 5)", inline=False)
     embed.add_field(
         name="/alarm HH:MM", value="指定した時刻(JST)にメンションを送信します(例：/alarm 17:00)", inline=False
     )
-    embed.add_field(name="/ping", value="pingを送信します", inline=False)
     await interaction.response.send_message(embed=embed)
+    logger.info("ヘルプコマンドが実行されました")
 
 
 @bot.tree.command(name="alarm", description="指定した時刻(JST)にメンションを送信します")
 @app_commands.describe(time="時刻を指定してください (例: 17:00)")
-async def set_alarm(interaction: discord.Interaction, time: str):
+async def set_alarm(interaction: discord.Interaction, time: str) -> None:
+    """アラームコマンド"""
     try:
-        # タイムゾーンの設定
-        server_timezone = pytz.timezone(TIMEZONE)
-        now = datetime.datetime.now(server_timezone)
-        today = datetime.date.today()
-
-        # 時刻をバース
-        alarm_time = datetime.datetime.strptime(time, "%H:%M")
-
-        # タイムゾーンを設定
-        alarm_time = server_timezone.localize(alarm_time.replace(year=today.year, month=today.month, day=today.day))
-
-        # 指定した時刻までの時間差を計算
-        time_delta = alarm_time - now
-
-        # 翌日を指定した場合の処理
-        if time_delta.total_seconds() < 0:
-            tomorrow = today + datetime.timedelta(days=1)
-            alarm_time = alarm_time.replace(year=tomorrow.year, month=tomorrow.month, day=tomorrow.day)
-            time_delta = alarm_time - now
+        # アラーム時刻を計算
+        alarm_time = calculate_alarm_time(time, Config.TIMEZONE)
+        server_timezone = pytz.timezone(Config.TIMEZONE)
 
         await interaction.response.send_message(f"アラームを{time}(JST)にセットしました")
+        logger.info(f"アラームを{time}(JST)にセットしました（ユーザー: {interaction.user.name}）")
 
         # 指定した時刻まで待機
-        while now < alarm_time:
-            await asyncio.sleep(60)  # 　1分ごとに確認
-            now = datetime.datetime.now(server_timezone)
+        while datetime.datetime.now(server_timezone) < alarm_time:
+            await asyncio.sleep(Config.ALARM_CHECK_INTERVAL)
 
         # タイマーをセットした時刻にメッセージを送信
         await interaction.channel.send(f"{interaction.user.mention} {time}(JST)になりました")
-    except ValueError:
-        await interaction.response.send_message("正しい時刻の形式で指定してください(例：/alarm 17:00) ")
+        logger.info(f"アラーム通知を送信しました: {time}(JST)")
+
+    except ValueError as e:
+        error_message = "正しい時刻の形式で指定してください(例：/alarm 17:00)"
+        await interaction.response.send_message(error_message)
+        logger.warning(f"アラームコマンドのエラー: {e}")
+    except Exception as e:
+        logger.error(f"アラームコマンドで予期しないエラー: {e}")
+        if not interaction.response.is_done():
+            await interaction.response.send_message("アラームの設定中にエラーが発生しました")
 
 
 @bot.tree.command(name="del_msg", description="直近N件のメッセージを削除します")
 @app_commands.describe(num="削除するメッセージの件数")
-async def del_msg(interaction: discord.Interaction, num: int):
-    await interaction.response.defer(ephemeral=True)
-    await interaction.channel.purge(limit=num)
-    await interaction.followup.send(f"{num}件のメッセージを削除しました", ephemeral=True)
-
-
-@bot.tree.command(name="ping", description="pingを送信します")
-async def ping(interaction: discord.Interaction):
-    await interaction.response.send_message("pong")
+async def del_msg(interaction: discord.Interaction, num: int) -> None:
+    """メッセージ削除コマンド"""
+    try:
+        await interaction.response.defer(ephemeral=True)
+        deleted_messages = await interaction.channel.purge(limit=num)
+        await interaction.followup.send(f"{len(deleted_messages)}件のメッセージを削除しました", ephemeral=True)
+        logger.info(f"{len(deleted_messages)}件のメッセージを削除しました（ユーザー: {interaction.user.name}）")
+    except discord.Forbidden:
+        await interaction.followup.send("メッセージを削除する権限がありません", ephemeral=True)
+        logger.warning(f"メッセージ削除の権限エラー（ユーザー: {interaction.user.name}）")
+    except Exception as e:
+        logger.error(f"メッセージ削除中にエラー: {e}")
+        await interaction.followup.send("メッセージの削除中にエラーが発生しました", ephemeral=True)
 
 
 # ボットを実行
-keep_alive()
-bot.run(TOKEN)
+if __name__ == "__main__":
+    try:
+        keep_alive()
+        logger.info("ボットを起動します...")
+        bot.run(Config.TOKEN)
+    except Exception as e:
+        logger.error(f"ボットの起動に失敗しました: {e}")
