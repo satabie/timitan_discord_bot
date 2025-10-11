@@ -2,3 +2,5 @@
 .env
 *.ipynb
 docs/
+__pycache__/
+.vscode/
