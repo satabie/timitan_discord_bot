@@ -1,3 +1,4 @@
+import keyword
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -9,12 +10,69 @@ import asyncio
 import datetime
 import pytz
 import logging
+import json
 from typing import Optional, List
 from pathlib import Path
 
 # ロギングの設定
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+
+# キーワード管理クラス
+class KeywordManager:
+    """キーワードの永続化と管理を行うクラス"""
+
+    KEYWORDS_FILE: str = "keywords.json"
+
+    @classmethod
+    def load_keywords(cls) -> List[str]:
+        """JSONファイルからキーワードを読み込む"""
+        keywords_path = Path(cls.KEYWORDS_FILE)
+        if keywords_path.exists():
+            try:
+                with open(keywords_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return data.get("keywords", [])
+            except Exception as e:
+                logger.error(f"キーワードの読み込みに失敗しました: {e}")
+                return []
+        return []
+
+    @classmethod
+    def save_keywords(cls, keywords: List[str]) -> bool:
+        """キーワードをJSONファイルに保存する"""
+        try:
+            with open(cls.KEYWORDS_FILE, "w", encoding="utf-8") as f:
+                json.dump({"keywords": keywords}, f, ensure_ascii=False, indent=2)
+            logger.info(f"キーワードを保存しました: {keywords}")
+            return True
+        except Exception as e:
+            logger.error(f"キーワードの保存に失敗しました: {e}")
+            return False
+
+    @classmethod
+    def add_keyword(cls, keyword: str) -> bool:
+        """キーワードを追加する"""
+        keywords = cls.load_keywords()
+        if keyword in keywords:
+            return False
+        keywords.append(keyword)
+        return cls.save_keywords(keywords)
+
+    @classmethod
+    def remove_keyword(cls, keyword: str) -> bool:
+        """キーワードを削除する"""
+        keywords = cls.load_keywords()
+        if keyword not in keywords:
+            return False
+        keywords.remove(keyword)
+        return cls.save_keywords(keywords)
+
+    @classmethod
+    def get_keywords(cls) -> List[str]:
+        """現在のキーワードリストを取得する"""
+        return cls.load_keywords()
 
 
 # 設定クラス
@@ -24,7 +82,6 @@ class Config:
     load_dotenv()
 
     TOKEN: str = os.getenv("DISCORD_BOT_TOKEN", "")
-    REPLY_KEYWORDS: List[str] = [k.strip() for k in os.getenv("REPLY_KEYWORDS", "").split(",") if k.strip()]
     COMMAND_PREFIX: str = "/"
     TIMEZONE: str = "Asia/Tokyo"
     GIF_FOLDER: str = "gif"
@@ -128,7 +185,8 @@ async def on_message(message: discord.Message) -> None:
     logger.info(f"メッセージ受信: {message.content}")
 
     # キーワードに対する返信（GIF送信）
-    keyword = check_keyword_in_message(message.content, Config.REPLY_KEYWORDS)
+    keywords = KeywordManager.get_keywords()
+    keyword = check_keyword_in_message(message.content, keywords)
     if keyword:
         await send_random_gif(message.channel)
         logger.info(f"キーワード '{keyword}' に反応しました")
@@ -146,6 +204,9 @@ async def help(interaction: discord.Interaction) -> None:
     embed.add_field(
         name="/alarm HH:MM", value="指定した時刻(JST)にメンションを送信します(例：/alarm 17:00)", inline=False
     )
+    embed.add_field(name="/add_keyword キーワード", value="反応するキーワードを追加します", inline=False)
+    embed.add_field(name="/remove_keyword キーワード", value="反応するキーワードを削除します", inline=False)
+    embed.add_field(name="/list_keywords", value="登録されているキーワードの一覧を表示します", inline=False)
     await interaction.response.send_message(embed=embed)
     logger.info("ヘルプコマンドが実行されました")
 
@@ -195,6 +256,57 @@ async def del_msg(interaction: discord.Interaction, num: int) -> None:
     except Exception as e:
         logger.error(f"メッセージ削除中にエラー: {e}")
         await interaction.followup.send("メッセージの削除中にエラーが発生しました", ephemeral=True)
+
+
+@bot.tree.command(name="add_keyword", description="反応するキーワードを追加します")
+@app_commands.describe(keyword="追加するキーワード")
+async def add_keyword(interaction: discord.Interaction, keyword: str) -> None:
+    """キーワード追加コマンド"""
+    try:
+        if KeywordManager.add_keyword(keyword):
+            await interaction.response.send_message(f"キーワード「{keyword}」を追加しました", ephemeral=True)
+            logger.info(f"キーワードを追加しました: {keyword}（ユーザー: {interaction.user.name}）")
+        else:
+            await interaction.response.send_message(f"キーワード「{keyword}」は既に登録されています", ephemeral=True)
+            logger.info(f"重複したキーワードの追加を試みました: {keyword}（ユーザー: {interaction.user.name}）")
+    except Exception as e:
+        logger.error(f"キーワード追加中にエラー: {e}")
+        await interaction.response.send_message("キーワードの追加中にエラーが発生しました", ephemeral=True)
+
+
+@bot.tree.command(name="remove_keyword", description="反応するキーワードを削除します")
+@app_commands.describe(keyword="削除するキーワード")
+async def remove_keyword(interaction: discord.Interaction, keyword: str) -> None:
+    """キーワード削除コマンド"""
+    try:
+        if KeywordManager.remove_keyword(keyword):
+            await interaction.response.send_message(f"キーワード「{keyword}」を削除しました", ephemeral=True)
+            logger.info(f"キーワードを削除しました: {keyword}（ユーザー: {interaction.user.name}）")
+        else:
+            await interaction.response.send_message(f"キーワード「{keyword}」は登録されていません", ephemeral=True)
+            logger.info(f"存在しないキーワードの削除を試みました: {keyword}（ユーザー: {interaction.user.name}）")
+    except Exception as e:
+        logger.error(f"キーワード削除中にエラー: {e}")
+        await interaction.response.send_message("キーワードの削除中にエラーが発生しました", ephemeral=True)
+
+
+@bot.tree.command(name="list_keywords", description="登録されているキーワードの一覧を表示します")
+async def list_keywords(interaction: discord.Interaction) -> None:
+    """キーワード一覧表示コマンド"""
+    try:
+        keywords = KeywordManager.get_keywords()
+        if keywords:
+            keyword_list = "、".join(keywords)
+            embed = discord.Embed(
+                title="登録キーワード一覧", description=f"現在のキーワード: {keyword_list}", color=0x00BFFF
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        else:
+            await interaction.response.send_message("現在、キーワードは登録されていません", ephemeral=True)
+        logger.info(f"キーワード一覧を表示しました（ユーザー: {interaction.user.name}）")
+    except Exception as e:
+        logger.error(f"キーワード一覧表示中にエラー: {e}")
+        await interaction.response.send_message("キーワード一覧の取得中にエラーが発生しました", ephemeral=True)
 
 
 # ボットを実行
