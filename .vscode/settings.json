@@ -1,6 +1,7 @@
 {
-  "[python]": {
-    "editor.defaultFormatter": "ms-python.autopep8"
-  },
-  "python.formatting.provider": "none"
+    "python.defaultInterpreterPath": "/Users/shosei/anaconda3/envs/timitan/bin/python",
+    "python.analysis.typeCheckingMode": "off",
+    "python.languageServer": "Pylance",
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.diagnosticMode": "workspace"
 }

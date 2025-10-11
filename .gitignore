@@ -2,3 +2,6 @@
 .env
 *.ipynb
 docs/
+.vscode/
+__pycache__/
+keywords.json
